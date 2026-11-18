@@ -32,6 +32,7 @@ import * as ModelManifest from "./ModelManifest.ts";
 import { applyProviderCompatibility } from "./providerCompatibility.ts";
 import * as ServerConfig from "../config.ts";
 import { refreshWindowsPath } from "../os-jank.ts";
+import { WorkspaceScanRunsHooks } from "./WorkspaceScanHooks.ts";
 import * as ProviderInstanceRegistry from "./ProviderInstanceRegistry.ts";
 import * as ProviderInstanceRegistryMutator from "./ProviderInstanceRegistryMutator.ts";
 import {
@@ -1139,6 +1140,8 @@ export const layer = Layer.effect(
         return providers;
       }
       const token = yield* Deferred.make<void>();
+      // Read here: the scan below runs detached from this caller.
+      const runHooks = yield* WorkspaceScanRunsHooks;
       // A machine refresh can change this cwd's snapshot, so the scan publishes against the result.
       const refreshMachineSnapshot = input.fresh
         ? (instance.invalidateCaches ?? Effect.void).pipe(
@@ -1153,10 +1156,12 @@ export const layer = Layer.effect(
         : Effect.succeed(scannedFrom);
       const runScan = refreshMachineSnapshot.pipe(
         Effect.flatMap((scanBase) =>
-          Effect.map(snapshotForCwd(input.scanCwd ?? input.cwd), (scopedSnapshot) => ({
-            scanBase,
-            scopedSnapshot,
-          })),
+          Effect.map(
+            snapshotForCwd(input.scanCwd ?? input.cwd).pipe(
+              Effect.provideService(WorkspaceScanRunsHooks, runHooks),
+            ),
+            (scopedSnapshot) => ({ scanBase, scopedSnapshot }),
+          ),
         ),
         // Scans fail on error; returned inventory remains valid even when provider health reports an error.
         Effect.flatMap(({ scanBase, scopedSnapshot }) =>
