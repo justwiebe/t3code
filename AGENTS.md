@@ -4,6 +4,17 @@ T3 Code is a minimal GUI for coding agents. A Node WebSocket server wraps provid
 
 You can think of T3 Code as an open source "bring-your-own-subscription" alternative to apps like Claude Desktop, Codex App, Cursor Glass and Conductor.
 
+## This fork
+
+This checkout is `justwiebe/t3code` (`origin`), a fork of `pingdotgg/t3code` (`upstream`). It tracks upstream and adds a few small features on top. These rules outrank the rest of this file where they conflict.
+
+- **Check upstream before building.** When asked about or for a feature, first search upstream for open issues and PRs, plus merged PRs that our `main` lacks:
+  `gh issue list -R pingdotgg/t3code --search "<keywords>"`, `gh pr list -R pingdotgg/t3code --state all --search "<keywords>"`.
+  Report what you find before writing code. If an upstream PR implements it, prefer pulling that in (`gh pr diff <n> -R pingdotgg/t3code | git apply`, or cherry-pick) over writing our own.
+- **Sync by merge.** `git fetch upstream && git merge upstream/main` on `main`. Do not rebase or force-push `main`.
+- **Keep the diff small.** Put fork features in new files where you can, and touch upstream files as little as possible, so merges stay clean.
+- **No PRs.** Commit fork work straight to `main`, not to a branch. Never open a PR or issue against upstream unless asked.
+
 ## What makes T3 Code special?
 
 We have over 500,000 users who love T3 Code. It's important we maintain the things they love as we continue to iterate on the product. Here's a brief list of the things we can never compromise on.
