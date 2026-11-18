@@ -13,7 +13,7 @@ This checkout is `justwiebe/t3code` (`origin`), a fork of `pingdotgg/t3code` (`u
   Report what you find before writing code. If an upstream PR implements it, prefer pulling that in (`gh pr diff <n> -R pingdotgg/t3code | git apply`, or cherry-pick) over writing our own.
 - **Sync by merge.** `git fetch upstream && git merge upstream/main` on `main`. Do not rebase or force-push `main`.
 - **Keep the diff small.** Put fork features in new files where you can, and touch upstream files as little as possible, so merges stay clean.
-- **No PRs.** Commit fork work straight to `main`, not to a branch. Never open a PR or issue against upstream unless asked.
+- **No PRs.** Commit fork work straight to `main`, not to a branch, and push to `origin`. Never open a PR or issue against upstream unless asked.
 
 ## What makes T3 Code special?
 
