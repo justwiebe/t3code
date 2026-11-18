@@ -33,6 +33,12 @@ import {
   ChatGptHandoffInput,
   ChatGptHandoffState,
 } from "./providerSetup.ts";
+import {
+  ClaudePluginUiClosePaneInput,
+  ClaudePluginUiPressInput,
+  ClaudePluginUiSnapshot,
+  ClaudePluginUiSubscribeInput,
+} from "./claudePluginUi.ts";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
@@ -482,6 +488,9 @@ export const WS_METHODS = {
   providerInstallCancel: "provider.install.cancel",
   providerInstallSubscribe: "provider.install.subscribe",
   providerInstallRemove: "provider.install.remove",
+  claudePluginUiSubscribe: "provider.claude.plugin-ui.subscribe",
+  claudePluginUiPress: "provider.claude.plugin-ui.press",
+  claudePluginUiClosePane: "provider.claude.plugin-ui.close-pane",
 
   vcsPull: "vcs.pull",
   vcsRefreshStatus: "vcs.refreshStatus",
@@ -824,6 +833,23 @@ const WsProviderInstallSubscribeRpc = Rpc.make(WS_METHODS.providerInstallSubscri
   success: ProviderInstallState,
   error: ProviderSetupRpcError,
   stream: true,
+});
+
+const WsClaudePluginUiSubscribeRpc = Rpc.make(WS_METHODS.claudePluginUiSubscribe, {
+  payload: ClaudePluginUiSubscribeInput,
+  success: ClaudePluginUiSnapshot,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsClaudePluginUiPressRpc = Rpc.make(WS_METHODS.claudePluginUiPress, {
+  payload: ClaudePluginUiPressInput,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsClaudePluginUiClosePaneRpc = Rpc.make(WS_METHODS.claudePluginUiClosePane, {
+  payload: ClaudePluginUiClosePaneInput,
+  error: EnvironmentAuthorizationError,
 });
 
 const WsProviderInstallRemoveRpc = Rpc.make(WS_METHODS.providerInstallRemove, {
@@ -2279,6 +2305,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsProviderInstallCancelRpc,
   WsProviderInstallSubscribeRpc,
   WsProviderInstallRemoveRpc,
+  WsClaudePluginUiSubscribeRpc,
+  WsClaudePluginUiPressRpc,
+  WsClaudePluginUiClosePaneRpc,
   WsServerUpdateServerRpc,
   WsServerGetNpmReleaseRpc,
   WsServerUpdateServerWithProgressRpc,

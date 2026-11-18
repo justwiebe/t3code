@@ -208,6 +208,7 @@ import {
   shouldPersistProviderEvent,
 } from "../../provider/EventNdjsonLogger.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+import * as ClaudePluginUi from "../../provider/ClaudePluginUi.ts";
 import {
   claudeRateLimitEventToUpdate,
   type ClaudeScopedLimitNames,
@@ -663,6 +664,8 @@ export interface ClaudeAgentSdkQueryOpenInput {
 
 export interface ClaudeAgentSdkQuerySession {
   readonly messages: Stream.Stream<SDKMessage, ClaudeAgentSdkQueryRunnerError>;
+  /** True when T3 draws this session's Claude Code mod UI, so a mod pane can take input. */
+  readonly drawsPluginUi?: boolean;
   readonly offer: (
     message: SDKUserMessage,
     onQueued?: () => void,
@@ -874,6 +877,17 @@ function claudeProcessExitFailure(
     CLAUDE_PROCESS_EXIT_ERROR_CLASSES.has(errorClass) &&
     typeof telemetryMessage === "string"
     ? { message: `${telemetryMessage}.`, code: errorClass }
+    : undefined;
+}
+
+// Mod UI (`ui_render`, `ui_press`, `ui_panes`, `ui_close`) rides the SDK's control-request
+// channel, which the SDK exposes only as an untyped method.
+function claudeControlRequestOf(
+  queryRuntime: ClaudeQuery,
+): ClaudePluginUi.ClaudeControlRequest | undefined {
+  const request: unknown = Reflect.get(queryRuntime, "request");
+  return typeof request === "function"
+    ? (body) => Promise.resolve(Reflect.apply(request, queryRuntime, [body]))
     : undefined;
 }
 
@@ -1405,6 +1419,7 @@ export const layerQueryRunner: Layer.Layer<
   | Path.Path
   | PortScanner.PortDiscovery
   | ProviderEventLoggers.ProviderEventLoggers
+  | ClaudePluginUi.ClaudePluginUi
 > = Layer.effect(
   ClaudeAgentSdkQueryRunner,
   Effect.gen(function* () {
@@ -1412,6 +1427,7 @@ export const layerQueryRunner: Layer.Layer<
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const path = yield* Path.Path;
     const { native: nativeEventLogger } = yield* ProviderEventLoggers.ProviderEventLoggers;
+    const pluginUi = yield* ClaudePluginUi.ClaudePluginUi;
     const agentScope = yield* AgentScope;
     const providerProcesses = yield* ProviderProcesses.ProviderProcesses;
     const platform = yield* HostProcess.Platform;
@@ -1691,7 +1707,11 @@ export const layerQueryRunner: Layer.Layer<
         ),
       );
 
+      const pluginUiRequest = claudeControlRequestOf(queryRuntime);
+      if (pluginUiRequest !== undefined) yield* pluginUi.attach(input.threadId, pluginUiRequest);
+
       return {
+        drawsPluginUi: pluginUiRequest !== undefined,
         messages: Stream.fromAsyncIterable(
           claudeQueryMessages(queryRuntime),
           (cause) => cause,
@@ -1736,6 +1756,7 @@ export const layerQueryRunner: Layer.Layer<
               payload: message,
             }),
           ),
+          Stream.tap((message) => pluginUi.ingest(input.threadId, message, pluginUiRequest)),
         ),
         offer: (message, onQueued) =>
           Effect.uninterruptibleMask((restore) =>
@@ -1902,6 +1923,11 @@ export const layerQueryRunner: Layer.Layer<
         close: Effect.suspend(() => (processExited ? Effect.void : refreshDescendants)).pipe(
           Effect.andThen(Queue.shutdown(promptQueue)),
           Effect.andThen(closeClaudeQuery(queryRuntime)),
+          Effect.ensuring(
+            pluginUiRequest === undefined
+              ? Effect.void
+              : pluginUi.detach(input.threadId, pluginUiRequest),
+          ),
           Effect.tap(() =>
             logProtocolEvent({
               direction: "outgoing",
@@ -5398,8 +5424,8 @@ function claudeTaskString(value: unknown, key: string): string | undefined {
   return typeof field === "string" && field.trim().length > 0 ? field.trim() : undefined;
 }
 
-// A Claude Code mod can hold a tool call until the user acts in its terminal
-// pane. T3 cannot provide the requested pane interaction.
+// A Claude Code mod can hold a tool call until the user acts in its pane. Without
+// mod UI T3 cannot show the pane, so the turn fails instead of hanging.
 // Passive panes never request focus and keep working.
 function claudeFocusRequestedPanePlugin(message: SDKMessage): string | null {
   if (message.type !== "system" || claudeTaskField(message, "subtype") !== "ui_panes") return null;
@@ -10689,7 +10715,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             }
           }
           const focusedPlugin = claudeFocusRequestedPanePlugin(message);
-          if (focusedPlugin !== null && context === (yield* Ref.get(activeTurn))) {
+          if (
+            focusedPlugin !== null &&
+            liveQuery.query.drawsPluginUi !== true &&
+            context === (yield* Ref.get(activeTurn))
+          ) {
             yield* Effect.logWarning("orchestration-v2.claude-mod-pane-focus-unsupported", {
               providerTurnId: context.providerTurnId,
               plugin: focusedPlugin,

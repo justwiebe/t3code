@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- workflow fixtures use files and the fake Claude CLI uses Node streams
+import * as ClaudePluginUi from "../../provider/ClaudePluginUi.ts";
 import * as NodeEvents from "node:events";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -2827,6 +2828,7 @@ describe("ClaudeAdapterV2 native fork", () => {
       const realRunner = yield* ClaudeAdapterV2.ClaudeAgentSdkQueryRunner.pipe(
         Effect.provide(
           ClaudeAdapterV2.layerQueryRunner.pipe(
+            Layer.provide(ClaudePluginUi.layer),
             Layer.provide(PortScanner.layerTest),
             Layer.provide(
               Layer.succeed(ProviderEventLoggers.ProviderEventLoggers, {
@@ -3104,7 +3106,12 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
         },
       });
     }).pipe(
-      Effect.provide(ClaudeAdapterV2.layerQueryRunner.pipe(Layer.provide(PortScanner.layerTest))),
+      Effect.provide(
+        ClaudeAdapterV2.layerQueryRunner.pipe(
+          Layer.provide(PortScanner.layerTest),
+          Layer.provide(ClaudePluginUi.layer),
+        ),
+      ),
       Effect.provideService(ProviderEventLoggers.ProviderEventLoggers, {
         ...ProviderEventLoggers.NoOpProviderEventLoggers,
         native,
@@ -3566,6 +3573,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly settings?: ClaudeSettings;
     readonly modelCatalog?: Effect.Effect<ClaudeModelCatalog>;
     readonly freshQueueOnReopen?: boolean;
+    readonly drawsPluginUi?: boolean;
     readonly forkSession?: ClaudeAdapterV2.ClaudeAgentSdkQueryRunnerShape["forkSession"];
     readonly allocateSessionId?: Effect.Effect<string>;
     readonly offer?: (message: SDKUserMessage) => Effect.Effect<void>;
@@ -3705,6 +3713,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               }
               processQueues.push(sdkMessages);
               return {
+                ...(options?.drawsPluginUi === true ? { drawsPluginUi: true } : {}),
                 messages,
                 offer: (message) =>
                   Effect.sync(() => {
@@ -15756,11 +15765,18 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   it.effect.each([
     { case: "fails a turn whose mod requests focus for a pane T3 cannot show", focus: true },
     { case: "keeps a turn running beside a passive mod pane", focus: false },
-  ] as const)("$case", ({ focus }) =>
+    {
+      case: "keeps a turn running while T3 draws the focused mod pane",
+      focus: true,
+      drawsPluginUi: true,
+    },
+  ] as const)("$case", ({ focus, ...rest }) =>
     Effect.gen(function* () {
+      const drawsPluginUi = "drawsPluginUi" in rest;
       const closed = yield* Deferred.make<void>();
       const harness = yield* makeWakeHarnessWithOptions({
         close: () => Deferred.succeed(closed, undefined),
+        drawsPluginUi,
       });
       const now = yield* DateTime.now;
       yield* harness.runtime.startTurn(
@@ -15821,7 +15837,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           ),
       );
       const [terminal] = harness.terminalEvents();
-      if (!focus) {
+      if (!focus || drawsPluginUi) {
         assert.equal(terminal, undefined);
         return;
       }

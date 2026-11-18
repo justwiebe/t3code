@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- the fake CLI and its leftover child are real processes.
+import * as ClaudePluginUi from "../../provider/ClaudePluginUi.ts";
 import * as ClaudeSdk from "@anthropic-ai/claude-agent-sdk";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeEvents from "node:events";
@@ -71,6 +72,7 @@ const writeClaudeSession = Effect.fnUntraced(function* (
 });
 
 const forkRunnerLayer = layerQueryRunner.pipe(
+  Layer.provide(ClaudePluginUi.layer),
   Layer.provide(PortScanner.layerTest),
   Layer.provide(Layer.succeed(ProviderEventLoggers, { native: undefined, canonical: undefined })),
 );
@@ -203,6 +205,7 @@ it.effect("forked Claude sessions keep their compaction chain", () =>
 );
 
 const realQueryRunner = layerQueryRunner.pipe(
+  Layer.provide(ClaudePluginUi.layer),
   Layer.provide(PortScanner.layerTest),
   Layer.provide(
     Layer.succeed(ProviderEventLoggers, {
@@ -881,6 +884,7 @@ describe.skipIf(HostProcess.Platform.defaultValue() === "win32")("Claude CLI pro
     let releaseAgent!: () => void;
     const agentReleased = new Promise<void>((resolve) => (releaseAgent = resolve));
     const runner = layerQueryRunner.pipe(
+      Layer.provide(ClaudePluginUi.layer),
       Layer.provide(
         Layer.mock(PortScanner.PortDiscovery)({
           trackAgent: () => {
